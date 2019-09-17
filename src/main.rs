@@ -19,30 +19,30 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 pub trait Route: Sync + Send {
-    fn handle(&self, req: &Request) -> Result<Response>;
+    fn handle_request(&self, req: &Request) -> Response;
 }
 
 struct VmCreate {}
 
 impl Route for VmCreate {
-    fn handle(&self, req: &Request) -> Result<Response> {
+    fn handle_request(&self, req: &Request) -> Response {
         println!("Request method: [{:?}]", req.method());
         let mut response = Response::new(Version::Http11, StatusCode::OK);
         response.set_body(Body::new("Vm Create DONE"));
 
-        Ok(response)
+        response
     }
 }
 
 struct VmStart {}
 
 impl Route for VmStart {
-    fn handle(&self, req: &Request) -> Result<Response> {
+    fn handle_request(&self, req: &Request) -> Response {
         println!("Request method: [{:?}]", req.method());
         let mut response = Response::new(Version::Http11, StatusCode::OK);
         response.set_body(Body::new("Vm Start DONE"));
 
-        Ok(response)
+        response
     }
 }
 
@@ -100,12 +100,8 @@ impl<'a> ApiServer<'a> {
 
                         while let Some(request) = http_connection.pop_parsed_request() {
                             let path = request.uri().get_abs_path();
-
                             let response = match API_ROUTES.routes.get(&path) {
-                                Some(route) => match route.handle(&request) {
-                                    Ok(resp) => resp,
-                                    Err(_) => Response::new(Version::Http11, StatusCode::NotFound),
-                                },
+                                Some(route) => route.handle_request(&request),
                                 None => Response::new(Version::Http11, StatusCode::NotFound),
                             };
 

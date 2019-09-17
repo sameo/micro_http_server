@@ -68,14 +68,14 @@ struct ApiServer<'a> {
 }
 
 impl<'a> ApiServer<'a> {
-    fn new(path: &'a str, num_threads: usize) -> Self {
+    pub fn new(path: &'a str, num_threads: usize) -> Self {
         ApiServer {
             path: Path::new(path),
             num_threads,
         }
     }
 
-    fn start(&self) {
+    pub fn start(&self) {
         let listener = UnixListener::bind(self.path).unwrap();
         let pool = ThreadPool::new(self.num_threads);
 
@@ -85,19 +85,33 @@ impl<'a> ApiServer<'a> {
                     pool.execute(move || {
                         let mut http_connection = HttpConnection::new(s);
 
-                        http_connection.try_read().unwrap();
-                        let request = &http_connection.pop_parsed_request().unwrap();
-                        let path = request.uri().get_abs_path();
+                        match http_connection.try_read() {
+                            Ok(_) => {}
+                            Err(_) => {
+                                http_connection.enqueue_response(Response::new(
+                                    Version::Http11,
+                                    StatusCode::BadRequest,
+                                ));
 
-                        let response = match API_ROUTES.routes.get(&path) {
-                            Some(route) => {
-                                println!("FOUND route for path {}", path);
-                                route.handle(request).unwrap()
+                                http_connection.try_write().unwrap();
+                                return;
                             }
-                            None => Response::new(Version::Http11, StatusCode::NotFound),
-                        };
+                        }
 
-                        http_connection.enqueue_response(response);
+                        while let Some(request) = http_connection.pop_parsed_request() {
+                            let path = request.uri().get_abs_path();
+
+                            let response = match API_ROUTES.routes.get(&path) {
+                                Some(route) => match route.handle(&request) {
+                                    Ok(resp) => resp,
+                                    Err(_) => Response::new(Version::Http11, StatusCode::NotFound),
+                                },
+                                None => Response::new(Version::Http11, StatusCode::NotFound),
+                            };
+
+                            http_connection.enqueue_response(response);
+                        }
+
                         http_connection.try_write().unwrap();
                     });
                 }

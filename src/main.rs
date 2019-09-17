@@ -19,13 +19,14 @@ pub enum Error {
 pub type Result<T> = result::Result<T, Error>;
 
 pub trait Route: Sync + Send {
-    fn handle(&self, req: Request) -> Result<Response>;
+    fn handle(&self, req: &Request) -> Result<Response>;
 }
 
 struct VmCreate {}
 
 impl Route for VmCreate {
-    fn handle(&self, _req: Request) -> Result<Response> {
+    fn handle(&self, req: &Request) -> Result<Response> {
+        println!("Request method: [{:?}]", req.method());
         let mut response = Response::new(Version::Http11, StatusCode::OK);
         response.set_body(Body::new("Vm Create DONE"));
 
@@ -36,7 +37,8 @@ impl Route for VmCreate {
 struct VmStart {}
 
 impl Route for VmStart {
-    fn handle(&self, _req: Request) -> Result<Response> {
+    fn handle(&self, req: &Request) -> Result<Response> {
+        println!("Request method: [{:?}]", req.method());
         let mut response = Response::new(Version::Http11, StatusCode::OK);
         response.set_body(Body::new("Vm Start DONE"));
 
@@ -45,7 +47,7 @@ impl Route for VmStart {
 }
 
 struct ApiRoutes {
-    routes: HashMap<String, Box<dyn Route + Sync + Send>>,
+    routes: HashMap<&'static str, Box<dyn Route + Sync + Send>>,
 }
 
 lazy_static! {
@@ -54,10 +56,8 @@ lazy_static! {
             routes: HashMap::new(),
         };
 
-        r.routes
-            .insert("/vm.create".to_string(), Box::new(VmCreate {}));
-        r.routes
-            .insert("/vm.start".to_string(), Box::new(VmStart {}));
+        r.routes.insert("/vm.create", Box::new(VmCreate {}));
+        r.routes.insert("/vm.start", Box::new(VmStart {}));
         r
     };
 }
@@ -86,8 +86,8 @@ impl<'a> ApiServer<'a> {
                         let mut http_connection = HttpConnection::new(s);
 
                         http_connection.try_read().unwrap();
-                        let request = http_connection.pop_parsed_request().unwrap();
-                        let path = request.uri().get_abs_path().to_string();
+                        let request = &http_connection.pop_parsed_request().unwrap();
+                        let path = request.uri().get_abs_path();
 
                         let response = match API_ROUTES.routes.get(&path) {
                             Some(route) => {

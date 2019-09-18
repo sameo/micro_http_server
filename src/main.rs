@@ -85,17 +85,14 @@ impl<'a> ApiServer<'a> {
                     pool.execute(move || {
                         let mut http_connection = HttpConnection::new(s);
 
-                        match http_connection.try_read() {
-                            Ok(_) => {}
-                            Err(_) => {
-                                http_connection.enqueue_response(Response::new(
-                                    Version::Http11,
-                                    StatusCode::BadRequest,
-                                ));
+                        if http_connection.try_read().is_err() {
+                            http_connection.enqueue_response(Response::new(
+                                Version::Http11,
+                                StatusCode::BadRequest,
+                            ));
 
-                                http_connection.try_write().unwrap();
-                                return;
-                            }
+                            http_connection.try_write().unwrap();
+                            return;
                         }
 
                         while let Some(request) = http_connection.pop_parsed_request() {
